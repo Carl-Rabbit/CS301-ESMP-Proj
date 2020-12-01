@@ -45,7 +45,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint8_t rxBuffer[20];
+extern MsgType SEND_TYPE;
+extern MsgType RESP_TYPE;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,7 +84,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+	LCD_Init();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -90,17 +92,22 @@ int main(void)
   MX_ADC1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+	HAL_UART_Receive_IT(&huart1, (uint8_t *) rxBuffer, 1);
+	InitWindow();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+	HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+
+	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
+	Handle_LED();
+	while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+	}
   /* USER CODE END 3 */
 }
 
@@ -150,7 +157,72 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Repeat_Handler(unsigned char uRx_Data[], unsigned char uLength) {
+	static unsigned char repeat[1024] = {0};
+	static unsigned char RespLen = 0;
 
+	AddLast(uRx_Data, SEND_TYPE);
+	if (strcmp((char *) uRx_Data, "temperature\r\n") == 0) {
+		printTemperature();
+	} else {
+		HAL_UART_Transmit(&huart1, uRx_Data, uLength, 0xffff);
+	}
+	Handle_LED();
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart->Instance == USART1) {
+		HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET);
+		static unsigned char uRx_Data[1024] = {0};
+		static unsigned char uLength = 0;
+		if (rxBuffer[0] == '\n') {
+			uRx_Data[uLength++] = '\n';
+			uRx_Data[uLength++] = '\0';
+			HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+			Repeat_Handler(uRx_Data, uLength);
+			HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
+			uLength = 0;
+		} else {
+			uRx_Data[uLength++] = rxBuffer[0];
+		}
+	}
+}
+
+void sprintFloat(char *str, float value) {
+	int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6;
+	tmp = (int) value;
+	tmp1 = (int) ((value - tmp) * 10) % 10;
+	tmp2 = (int) ((value - tmp) * 100) % 10;
+	tmp3 = (int) ((value - tmp) * 1000) % 10;
+	tmp4 = (int) ((value - tmp) * 10000) % 10;
+	tmp5 = (int) ((value - tmp) * 100000) % 10;
+	tmp6 = (int) ((value - tmp) * 1000000) % 10;
+	sprintf(str, "%d.%d%d%d%d%d%d", tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6);
+}
+
+void printTemperature() {
+	static uint16_t raw;
+	static char msg[20];
+	static char fStr[20];
+
+	HAL_ADC_Start(&hadc1);
+	// Wait for regular group conversion to be completed
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	// Get ADC value
+	raw = HAL_ADC_GetValue(&hadc1); // the voltage should be raw * (3.3/4096)(12 bits)
+	float voltage = raw * (3.3 / 4096);
+	float temperature = ((1.43 - voltage) / 4.3) + 25;
+	// Convert to string and print
+//		sprintf(msg, "temperature: %d\r\n", (int)temperature);
+	sprintFloat(fStr, temperature);
+	for (int i = 0; i < 20; ++i) {
+		msg[i] = '\0';
+	}
+	sprintf(msg, "T = %s\r\n", fStr);
+	HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), HAL_MAX_DELAY);
+	AddLast((uint8_t *) msg, RESP_TYPE);
+}
 /* USER CODE END 4 */
 
 /**
@@ -160,7 +232,7 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+	/* User can add his own implementation to report the HAL error return state */
 
   /* USER CODE END Error_Handler_Debug */
 }
@@ -177,7 +249,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+	 tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
