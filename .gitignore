@@ -125,3 +125,14 @@ _deps
 # End of https://www.toptal.com/developers/gitignore/api/clion,cmake
 
 !.gitignore
+CS301-ESMP-Proj.xml
+STM32F103RCTx_FLASH.ld
+CMakeLists.txt
+CMakeLists_template.txt
+/Drivers/*
+/startup/*
+.cproject
+.mxproject
+.project
+
+CS301-ESMP-Proj.ioc
