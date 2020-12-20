@@ -60,15 +60,13 @@
 #define HEAD_LEN 2
 #define HEART_BEAT (u8) 65
 #define PAYLOAD (u8) 66
-#define FIRST (u8) 65
-#define NOT_FIRST (u8) 66
 #define LAST (u8) 67
 #define NOT_LAST (u8) 68
 
 #define HB_TIME 1000
 #define DELAY_TIME 10
 
-#define TX_BUF_SIZE 8
+#define TX_BUF_SIZE 1024
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -158,8 +156,8 @@ void Processing_UART() {
 		uartRestDataCnt = ceil(1.0 * dataLen / NRF_BUFF_SIZE);
 		dataPtr = uartDataBuffer;
 
-		sprintf(txBuffer, "uartRestDataCnt=%d\r\n", uartRestDataCnt);
-		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+//		sprintf(txBuffer, "uartRestDataCnt=%d\r\n", uartRestDataCnt);
+//		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
 		strcpy(uartDataBuffer, p_str);      // 重新放回去
 		uartDataReady = 1;             // 设置发射位
@@ -184,8 +182,8 @@ void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 	sndPackage[0] = type;
 	sndPackage[2] = isLast;
 
-	sprintf(txBuffer, ">>> type=%d, isLast=%d. \r\n", type, isLast);
-	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+//	sprintf(txBuffer, ">>> type=%d, isLast=%d. \r\n", type, isLast);
+//	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
 	int i;
 	for (i = HEAD_LEN; i < length + HEAD_LEN && i < NRF_BUFF_SIZE; ++i) {
@@ -276,7 +274,7 @@ int main(void) {
 		}
 		status = nxtStatus;
 
-		u8 isLast = (uartRestDataCnt == 0) ? LAST: NOT_LAST;
+		u8 isLast = (uartRestDataCnt <= 1) ? LAST: NOT_LAST;
 
 		switch (status) {
 			case WAIT:
@@ -295,7 +293,7 @@ int main(void) {
 							print("[STM] Unkonwn pacakge\r\n");
 					}
 				}
-
+				// XXXXXXXXXXXXXXB123456789012345678XXXXXXXXXXXXXXB123456789012345678
 				if (uartDataReady == 1) {
 					nxtStatus = SEND_DA;
 					break;
@@ -339,7 +337,7 @@ int main(void) {
 					} else {
 						print("send partly");
 						-- uartRestDataCnt;
-						dataPtr += NRF_BUFF_SIZE;
+						dataPtr += NRF_BUFF_SIZE - 1;
 					}
 				} else {
 					if (connect == CONNECT) {
