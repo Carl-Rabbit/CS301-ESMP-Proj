@@ -34,6 +34,7 @@
 #include "lcd.h"
 #include "24l01.h"
 #include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,26 +45,25 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define NRF_BUFF_SIZE 32
+#define DEFAULT_CHANNEL (u8) 40
 
-#define MASTER (u8) 10
-#define M_NORM (u8) 11
-#define M_WAIT (u8) 12
+#define CONNECT 1
+#define DISCONNECT 0
 
-#define HEART_BEAT_CNT 1000
-#define HB_WAIT_CNT 3000
+#define WAIT (u8) 0
+#define SEND_HB (u8) 1
+#define SEND_DA (u8) 2
 
-
-#define SLAVE (u8) 20
-#define S_NORM (u8) 21
-#define S_REAP (u8) 22
 
 
 #define HEAD_LEN 1
-#define HEART_BEAT (u8) 0
-#define HEART_BEAT_REPLY (u8) 1
+#define HEART_BEAT (u8) 65
+#define PAYLOAD (u8) 66
 
-#define DEFAULT_CHANNEL 40
+#define HB_TIME 1000
+#define DELAY_TIME 10
 
+#define TX_BUF_SIZE 64
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -75,8 +75,22 @@
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
+
 /* USER CODE BEGIN PV */
+
 uint8_t rxBuffer[1024];
+u8 key;
+u8 status, nxtStatus;
+u16 t = 0;
+u8 sndPackage[NRF_BUFF_SIZE + 1];
+u8 rcvPackage[NRF_BUFF_SIZE + 1];
+u8 channel = DEFAULT_CHANNEL;
+u8 connect = DISCONNECT;
+
+u8 txBuffer[TX_BUF_SIZE];       // 串口回传的数据
+u8 uartDataBuffer[TX_BUF_SIZE];         // 串口输入数据的缓存
+u8 uartDataLen = 0;
+u8 uartDataReady = 0;                   // 待处理mark
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,7 +101,38 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void print(const u8 * msg) {
+	sprintf(txBuffer, msg);
+	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+}
 
+//u8 Processing_UART() {
+//
+//}
+
+void SetSndPackage(u8 type, const u8 * content, u8 length) {
+	sndPackage[0] = type;
+	int i;
+	for (i = HEAD_LEN; i < length + HEAD_LEN && i < NRF_BUFF_SIZE; ++i) {
+		sndPackage[i] = content[i - HEAD_LEN];
+	}
+	sndPackage[i] = 0;
+	sndPackage[NRF_BUFF_SIZE] = 0;
+}
+
+void ChangeConnection() {
+	sprintf(txBuffer, "Connect=%d\r\n", connect);
+	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+	if (connect == CONNECT) {
+		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send HB ");
+	} else {
+		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send Failed ");
+	}
+}
+
+u8 * getRcvPayload() {
+	return rcvPackage + HEAD_LEN;
+}
 /* USER CODE END 0 */
 
 /**
@@ -95,9 +140,6 @@ void SystemClock_Config(void);
   * @retval int
   */
 int main(void) {
-	u8 key, mode;
-	u16 t = 0;
-	u8 tmp_buf[NRF_BUFF_SIZE + 1];
 
 	HAL_Init();                            //初始化HAL库
 	Stm32_Clock_Init(RCC_PLL_MUL9);    //设置时钟,72M
@@ -111,7 +153,7 @@ int main(void) {
 	NRF24L01_Init();                    //初始化NRF24L01
 
 	POINT_COLOR = RED;
-	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 1612");
+	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 1909");
 	LCD_ShowString(30, 70, 200, 16, 16, "NRF24L01 TEST");
 	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
 	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
@@ -126,119 +168,115 @@ int main(void) {
 	LCD_ShowString(30, 130, 200, 16, 16, "NRF24L01 OK");
 
 
+//	while (1) {
+//		key = KEY_Scan(0);
+//		if (key == KEY0_PRES) {
+//			break;
+//		}
+//		t++;
+//		if (t == 100) {
+//			LCD_ShowString(10, 150, 230, 16, 16, "Presss KEY0 for default"); //闪烁显示提示信息
+//			LCD_ShowString(10, 166, 230, 16, 16, "or input channel"); //闪烁显示提示信息
+//		}
+//		if (t == 200) {
+//			LCD_Fill(10, 150, 230, 150 + 32, WHITE);
+//			t = 0;
+//		}
+//		delay_ms(5);
+//	}
+
+	status = WAIT;
+	nxtStatus = WAIT;
+
 	while (1) {
-		key = KEY_Scan(0);
-		if (key == KEY0_PRES) {
-			mode = SLAVE;
-			break;
-		} else if (key == KEY1_PRES) {
-			mode = MASTER;
-			break;
+		if (status == WAIT && (nxtStatus == SEND_DA || nxtStatus == SEND_HB)) {
+			NRF24L01_TX_Mode();
+//			HAL_UART_Transmit(&huart1, "Go SEND_XX\r\n", 12, 0xffff);
+		} else if ((status == SEND_DA || status == SEND_HB) && nxtStatus == WAIT) {
+			NRF24L01_RX_Mode();
+//			HAL_UART_Transmit(&huart1, "Go WAIT\r\n", 9, 0xffff);
 		}
-		t++;
-		if (t == 100)LCD_ShowString(10, 150, 230, 16, 16, "KEY1:MASTER KEY0:SLAVE"); //闪烁显示提示信息
-		if (t == 200) {
-			LCD_Fill(10, 150, 230, 150 + 16, WHITE);
-			t = 0;
+		status = nxtStatus;
+		switch (status) {
+			case WAIT:
+				if(NRF24L01_RxPacket(rcvPackage) == 0) {
+					rcvPackage[NRF_BUFF_SIZE] = 0;
+					switch (rcvPackage[0]) {
+						case HEART_BEAT:
+//							print("Recv HB package\r\n");
+							break;
+						case PAYLOAD:
+							print("Recv Payload: ");
+							print(getRcvPayload());
+							break;
+						default:
+							print("Unkonwn pacakge\r\n");
+					}
+				}
+
+				if (uartDataReady == 1) {
+					nxtStatus = SEND_DA;
+					break;
+				}
+				if (t >= HB_TIME / DELAY_TIME) {
+					t = 0;
+					nxtStatus = SEND_HB;
+					break;
+				}
+				break;
+
+			case SEND_HB:
+				SetSndPackage(HEART_BEAT, "Heart beat package", 19);
+				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
+					if (connect == DISCONNECT) {
+						connect = CONNECT;
+						ChangeConnection();
+					}
+				} else {
+					if (connect == CONNECT) {
+						connect = DISCONNECT;
+						ChangeConnection();
+					}
+				}
+				nxtStatus = WAIT;
+				break;
+
+			case SEND_DA:
+				SetSndPackage(PAYLOAD, uartDataBuffer, strlen(uartDataBuffer));
+				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
+					if (connect == DISCONNECT) {
+						connect = CONNECT;
+						ChangeConnection();
+					}
+					sprintf(txBuffer, "Send successfully: %s", uartDataBuffer);
+					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+				} else {
+					if (connect == CONNECT) {
+						connect = DISCONNECT;
+						ChangeConnection();
+					}
+					sprintf(txBuffer, "Send failed: %s", uartDataBuffer);
+					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+				}
+				uartDataReady = 0;
+				uartDataLen = 0;
+				nxtStatus = WAIT;
+				break;
 		}
-		delay_ms(5);
-	}
-
-	if (mode == MASTER) {
-		mode = M_NORM;
-		LCD_ShowString(30, 150, 200, 16, 16, "NRF24L01 MASTER");
-		NRF24L01_TX_Mode_P(DEFAULT_CHANNEL);
-		while (1) {
-			switch (mode) {
-				case M_NORM:
-					if (t == HEART_BEAT_CNT) {
-
-						// 发送心跳包
-						LED1 = 1;
-						t = 0;
-						tmp_buf[0] = HEART_BEAT;
-						strcpy(tmp_buf + HEAD_LEN, "This is a data");
-						tmp_buf[NRF_BUFF_SIZE] = 0;     // 加入结束符
-
-						if (NRF24L01_TxPacket(tmp_buf) == TX_OK) {
-							// 发送成功
-							LCD_ShowString(30, 170, 239, 32, 16, "Sended DATA:");
-							LCD_ShowString(0, 190, lcddev.width - 1, 32, 16, tmp_buf + HEAD_LEN);
-
-							mode = M_WAIT;
-						} else {
-							// 发送失败
-							LCD_Fill(0, 170, lcddev.width, 170 + 16 * 3, WHITE);//清空显示
-							LCD_ShowString(30, 170, lcddev.width - 1, 32, 16, "Send Failed ");
-						}
-					}
-					break;
-				case M_WAIT:
-					if (t == HB_WAIT_CNT) {
-						// 等待回复超时
-						t = 0;
-						mode = M_NORM;
-					}
-					break;
-			}
-			t++;
-			delay_ms(1);
-		}
-	} else {
-		mode = S_NORM;
-		LCD_ShowString(30, 150, 200, 16, 16, "NRF24L01 SLAVE");
-		LCD_ShowString(30, 170, 200, 16, 16, "Received DATA:");
-		NRF24L01_RX_Mode_P(DEFAULT_CHANNEL);
-		strcpy(tmp_buf, "This is the data send by Master");
-		while (1) {
-			switch (mode) {
-				case S_NORM:
-					if (NRF24L01_RxPacket(tmp_buf) == 0) {
-						// 接收到了一个包
-						tmp_buf[NRF_BUFF_SIZE] = 0;//加入字符串结束符
-						switch (tmp_buf[0]) {
-							case HEART_BEAT:
-								// 是心跳包，准备回发
-								LCD_ShowString(0, 190, lcddev.width - 1, 32, 16, tmp_buf + HEAD_LEN);
-								mode = S_REAP;
-								break;
-							case HEART_BEAT_REPLY:
-
-								break;
-							default:
-								// error
-								break;
-						}
-					} else {
-						delay_us(100);
-					}
-					t++;
-					if (t == 10000)//大约1s钟改变一次状态
-					{
-						t = 0;
-						LED1 = !LED1;
-					}
-					break;
-				case S_REAP:
-
-					break;
-			}
-		}
+		++t;
+		delay_ms(DELAY_TIME);
 	}
 }
 
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == USART1) {
-		static unsigned char uRx_Data[1024] = "hello ";
-		static unsigned char uLength = 7;
 		if (rxBuffer[0] == '\n') {
-			uRx_Data[uLength++] = '\n';
-			uRx_Data[uLength++] = '\0';
-			HAL_UART_Transmit(&huart1, uRx_Data, uLength, 0xffff);
-			uLength = 7;
+			uartDataBuffer[uartDataLen++] = '\n';
+			uartDataBuffer[uartDataLen++] = '\0';
+			uartDataReady = 1;
 		} else {
-			uRx_Data[uLength++] = rxBuffer[0];
+			uartDataBuffer[uartDataLen++] = rxBuffer[0];
 		}
 	}
 }
