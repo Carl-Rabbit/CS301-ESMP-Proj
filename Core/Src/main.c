@@ -35,6 +35,7 @@
 #include "24l01.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,7 +45,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define NRF_BUFF_SIZE 32
+#define NRF_BUFF_SIZE 64
 #define DEFAULT_CHANNEL (u8) 40
 
 #define CONNECT 1
@@ -53,17 +54,21 @@
 #define WAIT (u8) 0
 #define SEND_HB (u8) 1
 #define SEND_DA (u8) 2
+#define CONF (u8) 3
 
 
-
-#define HEAD_LEN 1
+#define HEAD_LEN 2
 #define HEART_BEAT (u8) 65
 #define PAYLOAD (u8) 66
+#define FIRST (u8) 65
+#define NOT_FIRST (u8) 66
+#define LAST (u8) 67
+#define NOT_LAST (u8) 68
 
 #define HB_TIME 1000
 #define DELAY_TIME 10
 
-#define TX_BUF_SIZE 64
+#define TX_BUF_SIZE 8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -89,8 +94,14 @@ u8 connect = DISCONNECT;
 
 u8 txBuffer[TX_BUF_SIZE];       // 串口回传的数据
 u8 uartDataBuffer[TX_BUF_SIZE];         // 串口输入数据的缓存
-u8 uartDataLen = 0;
-u8 uartDataReady = 0;                   // 待处理mark
+u8 uartDataLen = 0;                     // 串口输入数据的长度
+u8 uartDataReady = 0;                   // 待发送的mark：0不发送，1可以发送
+
+u8 uartRestDataCnt = 0;     // 还剩几个包
+u8 * dataPtr = NULL;        // 下一个包的payload开始的地方
+
+u8 p_str[TX_BUF_SIZE];       // 用于临时处理的str，至少和uart的buffer一样长
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,17 +117,84 @@ void print(const u8 * msg) {
 	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 }
 
-//u8 Processing_UART() {
-//
-//}
+u8 * parseNextWord(u8 * str, int * lenPtr) {
+	int len = 0;
+	u8 * ptr = str;
+	while (1) {
+		u8 chr = *ptr;
+		if (chr == (u8) '\r' || chr == (u8) '\n'
+				|| chr == (u8) '\0' || chr == (u8) ' ') {
+			*lenPtr = len;
+			return ptr;
+		}
+		++ len;
+		++ ptr;
+	}
+}
 
-void SetSndPackage(u8 type, const u8 * content, u8 length) {
+/* 当串口输入完成后调用，uartDataBuffer是输入的数据（长度uartDataLen) */
+void Processing_UART() {
+	if (uartDataLen <= 1) {
+		// 空输入
+		uartDataLen = 0;
+		return;
+	}
+	/**
+	 * send <data>: 发送数据
+	 * help: 打印help
+	 * conf <field> <data>: 修改数据
+	 */
+	int len = 0;
+	u8 * ptr = uartDataBuffer;
+	u8 * ptr2 = parseNextWord(ptr, &len);
+	strncpy(p_str, ptr, len);
+	p_str[len] = '\0';
+
+	if (strcmp(p_str, "send") == 0) {
+		strcpy(p_str, ptr2 + 1);    // 拿到<data>，因为空格+1
+
+		// 切割一下包
+		int dataLen = uartDataLen - 5;
+		uartRestDataCnt = ceil(1.0 * dataLen / NRF_BUFF_SIZE);
+		dataPtr = uartDataBuffer;
+
+		sprintf(txBuffer, "uartRestDataCnt=%d\r\n", uartRestDataCnt);
+		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+		strcpy(uartDataBuffer, p_str);      // 重新放回去
+		uartDataReady = 1;             // 设置发射位
+	} else if (strcmp(p_str, "help") == 0) {
+		print("[STM] Help\r\n");
+	} else if (strcmp(p_str, "conf") == 0) {
+		ptr = ptr2;
+		ptr2 = parseNextWord(ptr, &len);
+		strncpy(p_str, ptr, len);
+		if (strcmp(p_str, "channel") == 0) {
+			// set channel
+			print("Set channel\r\n");
+		}
+	} else {
+		sprintf(txBuffer, "Unknown command '%s'. Input 'help' to see all commands.\r\n", p_str);
+		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+	}
+	uartDataLen = 0;
+}
+
+void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 	sndPackage[0] = type;
+	sndPackage[2] = isLast;
+
+	sprintf(txBuffer, ">>> type=%d, isLast=%d. \r\n", type, isLast);
+	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
 	int i;
 	for (i = HEAD_LEN; i < length + HEAD_LEN && i < NRF_BUFF_SIZE; ++i) {
 		sndPackage[i] = content[i - HEAD_LEN];
+
+//		sprintf(txBuffer, ">>> i=%d, chr=%c \r\n", i, sndPackage[i]);
+//		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 	}
-	sndPackage[i] = 0;
+	sndPackage[i] = '\0';
 	sndPackage[NRF_BUFF_SIZE] = 0;
 }
 
@@ -153,7 +231,7 @@ int main(void) {
 	NRF24L01_Init();                    //初始化NRF24L01
 
 	POINT_COLOR = RED;
-	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 1909");
+	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 2135");
 	LCD_ShowString(30, 70, 200, 16, 16, "NRF24L01 TEST");
 	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
 	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
@@ -197,6 +275,9 @@ int main(void) {
 //			HAL_UART_Transmit(&huart1, "Go WAIT\r\n", 9, 0xffff);
 		}
 		status = nxtStatus;
+
+		u8 isLast = (uartRestDataCnt == 0) ? LAST: NOT_LAST;
+
 		switch (status) {
 			case WAIT:
 				if(NRF24L01_RxPacket(rcvPackage) == 0) {
@@ -206,11 +287,12 @@ int main(void) {
 //							print("Recv HB package\r\n");
 							break;
 						case PAYLOAD:
-							print("Recv Payload: ");
+							print("[STM] Recv Payload: ");
 							print(getRcvPayload());
+							print("\r\n");
 							break;
 						default:
-							print("Unkonwn pacakge\r\n");
+							print("[STM] Unkonwn pacakge\r\n");
 					}
 				}
 
@@ -226,7 +308,7 @@ int main(void) {
 				break;
 
 			case SEND_HB:
-				SetSndPackage(HEART_BEAT, "Heart beat package", 19);
+				SetSndPackage(HEART_BEAT, LAST, "HB", 3);
 				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
 					if (connect == DISCONNECT) {
 						connect = CONNECT;
@@ -242,25 +324,36 @@ int main(void) {
 				break;
 
 			case SEND_DA:
-				SetSndPackage(PAYLOAD, uartDataBuffer, strlen(uartDataBuffer));
+				SetSndPackage(PAYLOAD, isLast, dataPtr, strlen(dataPtr));
 				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
 					if (connect == DISCONNECT) {
 						connect = CONNECT;
 						ChangeConnection();
 					}
-					sprintf(txBuffer, "Send successfully: %s", uartDataBuffer);
-					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+					if (isLast == LAST) {
+						sprintf(txBuffer, "[STM] Send successfully: %s", uartDataBuffer);
+						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+						uartDataReady = 0;
+						uartDataLen = 0;
+						nxtStatus = WAIT;
+					} else {
+						print("send partly");
+						-- uartRestDataCnt;
+						dataPtr += NRF_BUFF_SIZE;
+					}
 				} else {
 					if (connect == CONNECT) {
 						connect = DISCONNECT;
 						ChangeConnection();
 					}
-					sprintf(txBuffer, "Send failed: %s", uartDataBuffer);
+					sprintf(txBuffer, "[STM] Send failed: %s", uartDataBuffer);
 					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+					// 放弃剩下的
+					uartDataReady = 0;
+					uartDataLen = 0;
+					nxtStatus = WAIT;
 				}
-				uartDataReady = 0;
-				uartDataLen = 0;
-				nxtStatus = WAIT;
 				break;
 		}
 		++t;
@@ -274,7 +367,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		if (rxBuffer[0] == '\n') {
 			uartDataBuffer[uartDataLen++] = '\n';
 			uartDataBuffer[uartDataLen++] = '\0';
-			uartDataReady = 1;
+
+			sprintf(txBuffer, "uartDataBuffer=\"%s\"\r\n", uartDataBuffer);
+			HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+			Processing_UART();
 		} else {
 			uartDataBuffer[uartDataLen++] = rxBuffer[0];
 		}
