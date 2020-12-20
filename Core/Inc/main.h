@@ -32,10 +32,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "string.h"
-#include <stdio.h>
-#include "lcd.h"
-#include "my_lcd.h"
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -57,15 +54,10 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void sprintFloat(char *, float);
-void printTemperature();
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LED0_Pin GPIO_PIN_8
-#define LED0_GPIO_Port GPIOA
-#define LED1_Pin GPIO_PIN_2
-#define LED1_GPIO_Port GPIOD
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

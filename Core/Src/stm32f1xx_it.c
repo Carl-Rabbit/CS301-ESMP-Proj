@@ -32,7 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+ 
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,6 +43,7 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 extern uint8_t rxBuffer[20];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,7 +63,7 @@ extern UART_HandleTypeDef huart1;
 /* USER CODE END EV */
 
 /******************************************************************************/
-/*           Cortex-M3 Processor Interruption and Exception Handlers          */
+/*           Cortex-M3 Processor Interruption and Exception Handlers          */ 
 /******************************************************************************/
 /**
   * @brief This function handles Non maskable interrupt.
@@ -207,7 +208,8 @@ void USART1_IRQHandler(void)
   /* USER CODE END USART1_IRQn 0 */
   HAL_UART_IRQHandler(&huart1);
   /* USER CODE BEGIN USART1_IRQn 1 */
-	HAL_UART_Receive_IT(&huart1, (uint8_t *)rxBuffer, 1);
+  HAL_UART_Receive_IT(&huart1, (uint8_t *)rxBuffer, 1);
+
   /* USER CODE END USART1_IRQn 1 */
 }
 
