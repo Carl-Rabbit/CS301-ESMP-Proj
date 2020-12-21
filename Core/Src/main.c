@@ -187,7 +187,7 @@ void Processing_UART() {
 
 void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 	sndPackage[0] = type;
-	sndPackage[2] = isLast;
+	sndPackage[1] = isLast;
 
 //	sprintf(txBuffer, ">>> type=%d, isLast=%d. \r\n", type, isLast);
 //	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
@@ -204,11 +204,11 @@ void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 }
 
 void ChangeConnection() {
-	sprintf(txBuffer, "Connect=%d\r\n", connect);
-	HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 	if (connect == CONNECT) {
+		print("[STM] Connected\r\n");
 		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send HB ");
 	} else {
+		print("[STM] Disconnected\r\n");
 		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send Failed ");
 	}
 }
@@ -236,7 +236,7 @@ int main(void) {
 	NRF24L01_Init();                    //初始化NRF24L01
 
 	POINT_COLOR = RED;
-	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 2135");
+	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 1852");
 	LCD_ShowString(30, 70, 200, 16, 16, "NRF24L01 TEST");
 	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
 	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
@@ -274,10 +274,8 @@ int main(void) {
 	while (1) {
 		if (status == WAIT && (nxtStatus == SEND_DA || nxtStatus == SEND_HB)) {
 			NRF24L01_TX_Mode();
-//			HAL_UART_Transmit(&huart1, "Go SEND_XX\r\n", 12, 0xffff);
 		} else if ((status == SEND_DA || status == SEND_HB) && nxtStatus == WAIT) {
 			NRF24L01_RX_Mode();
-//			HAL_UART_Transmit(&huart1, "Go WAIT\r\n", 9, 0xffff);
 		}
 		status = nxtStatus;
 
@@ -292,7 +290,11 @@ int main(void) {
 //							print("Recv HB package\r\n");
 							break;
 						case PAYLOAD:
-							print("[STM] Recv Payload: ");
+							if (rcvPackage[1] == LAST) {
+								print("[STM] Recv finish: ");
+							} else {
+								print("[STM] Recv partly: ");
+							}
 							print(getRcvPayload());
 							print("\r\n");
 							break;
@@ -323,9 +325,9 @@ int main(void) {
 					}
 				} else {
 					if (connect == CONNECT) {
+						HBTime = HB_TRY_TIME;   // 在CONNECT下失败了，立即加快HB发送
 						if (connectCnt <= 1) {
 							connect = DISCONNECT;
-							HBTime = HB_TRY_TIME;
 							ChangeConnection();
 						} else {
 							-- connectCnt;
@@ -358,9 +360,9 @@ int main(void) {
 					}
 				} else {
 					if (connect == CONNECT) {
+						HBTime = HB_TRY_TIME;   // 在CONNECT下失败了，立即加快HB发送
 						if (connectCnt <= 1) {
 							connect = DISCONNECT;
-							HBTime = HB_TRY_TIME;
 							ChangeConnection();
 						} else {
 							-- connectCnt;
