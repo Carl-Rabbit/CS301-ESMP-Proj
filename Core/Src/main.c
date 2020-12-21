@@ -32,6 +32,7 @@
 #include "led.h"
 #include "key.h"
 #include "lcd.h"
+#include "my_lcd.h"
 #include "24l01.h"
 #include <string.h>
 #include <stdio.h>
@@ -107,6 +108,9 @@ u8 rcvDataBuffer[TX_BUF_SIZE];  // uart 接收到的segment组合的buffer。至
 int HBTime = HB_TRY_TIME;
 u8 connectCnt = MAX_CNT;
 
+
+extern MsgType SEND_TYPE;
+extern MsgType RESP_TYPE;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -241,6 +245,9 @@ int main(void) {
 	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
 	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
 
+//	InitWindow();
+//	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
+//	RefreshWindow();
 
 	while (NRF24L01_Check()) {
 		LCD_ShowString(30, 130, 200, 16, 16, "NRF24L01 Error");
@@ -292,6 +299,8 @@ int main(void) {
 						case PAYLOAD:
 							if (rcvPackage[1] == LAST) {
 								print("[STM] Recv finish: ");
+//								AddLast(getRcvPayload(), RESP_TYPE);
+//								RefreshWindow();
 							} else {
 								print("[STM] Recv partly: ");
 							}
@@ -339,7 +348,8 @@ int main(void) {
 
 			case SEND_DA:
 				SetSndPackage(PAYLOAD, isLast, dataPtr, strlen(dataPtr));
-				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
+				u8 ret = NRF24L01_TxPacket(sndPackage);
+				if (ret == TX_OK) {
 					HBTime = HB_TIME;
 					if (connect == DISCONNECT) {
 						connect = CONNECT;
@@ -369,6 +379,9 @@ int main(void) {
 						}
 					}
 					sprintf(txBuffer, "[STM] Send failed: %s", uartDataBuffer);
+					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+					sprintf(txBuffer, "[STM] Tx ret: %d", ret);
 					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
 					// 放弃剩下的
