@@ -317,9 +317,9 @@ int main(void) {
 			case SEND_HB:
 				SetSndPackage(HEART_BEAT, LAST, "HB", 3);
 				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
+					HBTime = HB_TIME;
 					if (connect == DISCONNECT) {
 						connect = CONNECT;
-						HBTime = HB_TIME;
 						connectCnt = MAX_CNT;
 						ChangeConnection();
 					}
@@ -340,9 +340,9 @@ int main(void) {
 			case SEND_DA:
 				SetSndPackage(PAYLOAD, isLast, dataPtr, strlen(dataPtr));
 				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
+					HBTime = HB_TIME;
 					if (connect == DISCONNECT) {
 						connect = CONNECT;
-						HBTime = HB_TIME;
 						connectCnt = MAX_CNT;
 						ChangeConnection();
 					}
