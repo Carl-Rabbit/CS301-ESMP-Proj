@@ -245,9 +245,9 @@ int main(void) {
 	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
 	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
 
-//	InitWindow();
-//	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
-//	RefreshWindow();
+	InitWindow();
+	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
+	RefreshWindow();
 
 	while (NRF24L01_Check()) {
 		LCD_ShowString(30, 130, 200, 16, 16, "NRF24L01 Error");
@@ -299,8 +299,8 @@ int main(void) {
 						case PAYLOAD:
 							if (rcvPackage[1] == LAST) {
 								print("[STM] Recv finish: ");
-//								AddLast(getRcvPayload(), RESP_TYPE);
-//								RefreshWindow();
+								AddLast(getRcvPayload(), RESP_TYPE);
+								RefreshWindow();
 							} else {
 								print("[STM] Recv partly: ");
 							}
