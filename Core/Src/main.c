@@ -70,6 +70,10 @@
 #define DELAY_TIME 10
 
 #define TX_BUF_SIZE 1024
+
+// ui
+#define X_PADDING 15
+#define Y_PADDING 8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -104,6 +108,7 @@ u8 * dataPtr = NULL;        // 下一个包的payload开始的地方
 u8 p_str[TX_BUF_SIZE];       // 用于临时处理的str，至少和uart的buffer一样长
 
 u8 rcvDataBuffer[TX_BUF_SIZE];  // uart 接收到的segment组合的buffer。至少和发端能发的长度一致
+u8 * rcvDataPtr = NULL;         // 上面个的指针，指示下一个分片的开始
 
 int HBTime = HB_TRY_TIME;
 u8 connectCnt = MAX_CNT;
@@ -208,13 +213,15 @@ void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 }
 
 void ChangeConnection() {
+	static u8 msg[64];
 	if (connect == CONNECT) {
 		print("[STM] Connected\r\n");
-		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send HB ");
+		sprintf(msg, "Channel: %d   Connected", channel);
 	} else {
 		print("[STM] Disconnected\r\n");
-		LCD_ShowString(30,170,lcddev.width-1,32,16,"Send Failed ");
+		sprintf(msg, "Channel: %d   Disconnected", channel);
 	}
+	LCD_ShowString(X_PADDING,Y_PADDING + 16,lcddev.width-1,32,16,msg);
 }
 
 u8 * getRcvPayload() {
@@ -239,23 +246,19 @@ int main(void) {
 	LCD_Init();                            //初始化LCD
 	NRF24L01_Init();                    //初始化NRF24L01
 
-	POINT_COLOR = RED;
-	LCD_ShowString(30, 50, 200, 16, 16, "Mini STM32 1852");
-	LCD_ShowString(30, 70, 200, 16, 16, "NRF24L01 TEST");
-	LCD_ShowString(30, 90, 200, 16, 16, "ATOM@ALIENTEK");
-	LCD_ShowString(30, 110, 200, 16, 16, "2019/11/15");
-
 	InitWindow();
 	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
 	RefreshWindow();
 
+	POINT_COLOR = BLACK;
+	BACK_COLOR = WHITE;
 	while (NRF24L01_Check()) {
-		LCD_ShowString(30, 130, 200, 16, 16, "NRF24L01 Error");
+		LCD_ShowString(X_PADDING, Y_PADDING, 200, 16, 16, "NRF24L01 Error");
 		delay_ms(200);
 		LCD_Fill(30, 130, 239, 130 + 16, WHITE);
 		delay_ms(200);
 	}
-	LCD_ShowString(30, 130, 200, 16, 16, "NRF24L01 OK");
+	LCD_ShowString(X_PADDING, Y_PADDING, 200, 16, 16, "NRF24L01 OK");
 
 
 //	while (1) {
@@ -312,6 +315,11 @@ int main(void) {
 					}
 				}
 				// XXXXXXXXXXXXXXB123456789012345678XXXXXXXXXXXXXXB123456789012345678
+				if (uartRestDataCnt != 0) {
+					// 仍有要发的东西
+					nxtStatus = SEND_DA;
+					break;
+				}
 				if (uartDataReady == 1) {
 					nxtStatus = SEND_DA;
 					break;
@@ -356,39 +364,45 @@ int main(void) {
 						connectCnt = MAX_CNT;
 						ChangeConnection();
 					}
+
 					if (isLast == LAST) {
 						sprintf(txBuffer, "[STM] Send finish: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+						uartRestDataCnt = 0;
 						uartDataReady = 0;
 						uartDataLen = 0;
-						nxtStatus = WAIT;
 					} else {
 						sprintf(txBuffer, "[STM] Send partly: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 						-- uartRestDataCnt;
-						dataPtr += NRF_BUFF_SIZE - 1;
+						dataPtr += NRF_BUFF_SIZE - HEAD_LEN - 1;
 					}
 				} else {
 					if (connect == CONNECT) {
 						HBTime = HB_TRY_TIME;   // 在CONNECT下失败了，立即加快HB发送
-						if (connectCnt <= 1) {
+						if (connectCnt < 1) {
 							connect = DISCONNECT;
 							ChangeConnection();
+							// 放弃剩下的
+							uartRestDataCnt = 0;
+							uartDataReady = 0;
+							uartDataLen = 0;
 						} else {
 							-- connectCnt;
 						}
+					} else {
+						// 放弃剩下的
+						uartRestDataCnt = 0;
+						uartDataReady = 0;
+						uartDataLen = 0;
 					}
-					sprintf(txBuffer, "[STM] Send failed: %s", uartDataBuffer);
+					sprintf(txBuffer, "[STM] Send failed: %s\r\n", uartDataBuffer);
 					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
-					sprintf(txBuffer, "[STM] Tx ret: %d", ret);
+					sprintf(txBuffer, "[STM] Tx ret: %d\r\n", ret);
 					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
-
-					// 放弃剩下的
-					uartDataReady = 0;
-					uartDataLen = 0;
-					nxtStatus = WAIT;
 				}
+				nxtStatus = WAIT;
 				break;
 		}
 		++t;

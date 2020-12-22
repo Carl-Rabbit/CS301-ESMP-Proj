@@ -1,5 +1,7 @@
 #include "my_lcd.h"
 
+const u16 MARGIN_ADDITION_TOP = 40;
+
 const uint16_t MARGIN_X = 10;
 const uint16_t MARGIN_Y = 10;
 const uint16_t PADDING_X = 10;
@@ -80,16 +82,19 @@ void RefreshWindow() {
 	uint16_t MsgHeight;
 	uint16_t MsgBGColor;
 
-	LCD_Clear(WHITE);
+	POINT_COLOR = WHITE;
+	LCD_DrawRectangle(MARGIN_X, MARGIN_Y + MARGIN_ADDITION_TOP,
+	                  lcddev.width - MARGIN_X, lcddev.height - MARGIN_Y);
 
 	POINT_COLOR = BLACK;
-	LCD_DrawRectangle(MARGIN_X, MARGIN_Y, lcddev.width - MARGIN_X, lcddev.height - MARGIN_Y);
+	LCD_DrawRectangle(MARGIN_X, MARGIN_Y + MARGIN_ADDITION_TOP,
+			lcddev.width - MARGIN_X, lcddev.height - MARGIN_Y);
 
 	for (int i = wnd.MsgSize - 1; i >= 0; --i) {
 		Message msg = wnd.MsgArr[i];
 		MsgHeight = ROW_GAP * (1 + msg.RowCnt) + ROW_HEIGHT * msg.RowCnt;
 		y -= MSG_GAP + MsgHeight;
-		if (y < MARGIN_Y + PADDING_Y) {
+		if (y < MARGIN_Y + PADDING_Y + MARGIN_ADDITION_TOP) {
 			break;
 		}
 		if (msg.Type == SEND_TYPE) {
