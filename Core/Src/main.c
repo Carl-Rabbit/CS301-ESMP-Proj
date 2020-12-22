@@ -66,7 +66,7 @@
 #define LAST (u8) 67
 #define NOT_LAST (u8) 68
 
-#define HB_TIME 1000
+#define HB_TIME 1500
 #define HB_TRY_TIME 500
 #define DELAY_TIME 10
 
@@ -308,11 +308,14 @@ int main(void) {
 	status = STOP;
 	nxtStatus = STOP;
 
+	LED0 = 1;
+	LED1 = 1;
+
 	print("[STM] Start! Input 'help' to see the command.\r\n");
 	while (1) {
 		if (nxtStatus == STOP) {
 			status = STOP;
-			LED0 = !LED0;
+			LED1 = 1;
 
 			key = KEY_Scan(0);
 			if (key == KEY1_PRES) {
@@ -320,6 +323,9 @@ int main(void) {
 				status = WAIT;
 				nxtStatus = WAIT;
 				t = 0;
+				LED1 = 0;
+				connect = DISCONNECT;
+				ChangeConnection();
 				continue;
 			}
 
@@ -340,6 +346,7 @@ int main(void) {
 		key = KEY_Scan(0);
 		if (key == KEY0_PRES) {
 			print("[STM] Stop\r\n");
+			LED1 = 1;
 			nxtStatus = STOP;
 
 			POINT_COLOR = BLACK;
@@ -365,6 +372,7 @@ int main(void) {
 				// 优先check心跳包
 				if(NRF24L01_RxPacket(rcvPackage) == 0) {
 					rcvPackage[NRF_BUFF_SIZE] = 0;
+					LED0 = 0;
 					switch (rcvPackage[0]) {
 						case HEART_BEAT:
 //							print("Recv HB package\r\n");
@@ -394,6 +402,7 @@ int main(void) {
 						default:
 							print("[STM] Unkonwn pacakge\r\n");
 					}
+					LED0 = 1;
 				}
 				// XXXXXXXXXXXXXXB123456789012345678XXXXXXXXXXXXXXB123456789012345678
 				if (uartRestDataCnt != 0) {
@@ -413,6 +422,7 @@ int main(void) {
 				break;
 
 			case SEND_HB:
+				LED0 = 0;
 				SetSndPackage(HEART_BEAT, LAST, "HB", 3);
 				if (NRF24L01_TxPacket(sndPackage) == TX_OK) {
 					HBTime = HB_TIME;
@@ -432,11 +442,13 @@ int main(void) {
 						}
 					}
 				}
+				LED0 = 1;
 				nxtStatus = WAIT;
 				break;
 
 			case SEND_DA:
 				SetSndPackage(PAYLOAD, isLast, dataPtr, strlen(dataPtr));
+				LED0 = 0;
 				u8 ret = NRF24L01_TxPacket(sndPackage);
 				if (ret == TX_OK) {
 					HBTime = HB_TIME;
@@ -487,6 +499,7 @@ int main(void) {
 //					sprintf(txBuffer, "[STM] Tx ret: %d\r\n", ret);
 //					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 				}
+				LED0 = 1;
 				nxtStatus = WAIT;       // 回到普通模式检测一下
 				break;
 		}
