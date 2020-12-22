@@ -46,7 +46,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define NRF_BUFF_SIZE 64
+#define NRF_BUFF_SIZE 32
 #define DEFAULT_CHANNEL (u8) 40
 
 #define CONNECT 1
@@ -108,7 +108,7 @@ u8 * dataPtr = NULL;        // 下一个包的payload开始的地方
 u8 p_str[TX_BUF_SIZE];       // 用于临时处理的str，至少和uart的buffer一样长
 
 u8 rcvDataBuffer[TX_BUF_SIZE];  // uart 接收到的segment组合的buffer。至少和发端能发的长度一致
-u8 * rcvDataPtr = NULL;         // 上面个的指针，指示下一个分片的开始
+u8 * rcvDataPtr = rcvDataBuffer;         // 上面个的指针，指示下一个分片的开始
 
 int HBTime = HB_TRY_TIME;
 u8 connectCnt = MAX_CNT;
@@ -293,6 +293,7 @@ int main(void) {
 
 		switch (status) {
 			case WAIT:
+				// 优先check心跳包
 				if(NRF24L01_RxPacket(rcvPackage) == 0) {
 					rcvPackage[NRF_BUFF_SIZE] = 0;
 					switch (rcvPackage[0]) {
@@ -301,10 +302,21 @@ int main(void) {
 							break;
 						case PAYLOAD:
 							if (rcvPackage[1] == LAST) {
-								print("[STM] Recv finish: ");
-								AddLast(getRcvPayload(), RESP_TYPE);
+								// 最后一个包
+								u8 * tmp = getRcvPayload();
+								unsigned int tmp_len = strlen(tmp);
+								strncpy(rcvDataPtr, tmp, tmp_len);
+								AddLast(rcvDataBuffer, RESP_TYPE);
 								RefreshWindow();
+								rcvDataPtr = rcvDataBuffer;
+
+								print("[STM] Recv finish: ");
 							} else {
+								u8 * tmp = getRcvPayload();
+								unsigned int tmp_len = strlen(tmp);
+								strncpy(rcvDataPtr, tmp, tmp_len);
+								rcvDataPtr += tmp_len - 1;
+
 								print("[STM] Recv partly: ");
 							}
 							print(getRcvPayload());
@@ -375,7 +387,7 @@ int main(void) {
 						sprintf(txBuffer, "[STM] Send partly: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 						-- uartRestDataCnt;
-						dataPtr += NRF_BUFF_SIZE - HEAD_LEN - 1;
+						dataPtr += NRF_BUFF_SIZE - HEAD_LEN;
 					}
 				} else {
 					if (connect == CONNECT) {
@@ -399,10 +411,10 @@ int main(void) {
 					sprintf(txBuffer, "[STM] Send failed: %s\r\n", uartDataBuffer);
 					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
-					sprintf(txBuffer, "[STM] Tx ret: %d\r\n", ret);
-					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+//					sprintf(txBuffer, "[STM] Tx ret: %d\r\n", ret);
+//					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 				}
-				nxtStatus = WAIT;
+				nxtStatus = WAIT;       // 回到普通模式检测一下
 				break;
 		}
 		++t;
