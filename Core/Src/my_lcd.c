@@ -82,9 +82,8 @@ void RefreshWindow() {
 	uint16_t MsgHeight;
 	uint16_t MsgBGColor;
 
-	POINT_COLOR = WHITE;
-	LCD_DrawRectangle(MARGIN_X, MARGIN_Y + MARGIN_ADDITION_TOP,
-	                  lcddev.width - MARGIN_X, lcddev.height - MARGIN_Y);
+	LCD_Fill(MARGIN_X, MARGIN_Y + MARGIN_ADDITION_TOP,
+	                  lcddev.width - MARGIN_X, lcddev.height - MARGIN_Y, WHITE);
 
 	POINT_COLOR = BLACK;
 	LCD_DrawRectangle(MARGIN_X, MARGIN_Y + MARGIN_ADDITION_TOP,

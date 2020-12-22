@@ -114,6 +114,8 @@ u8 * rcvDataPtr = rcvDataBuffer;         // 上面个的指针，指示下一个
 int HBTime = HB_TRY_TIME;
 u8 connectCnt = MAX_CNT;
 
+int newChannel = 0;
+int confMark = 0;
 
 extern MsgType SEND_TYPE;
 extern MsgType RESP_TYPE;
@@ -183,33 +185,69 @@ void Processing_UART() {
 
 		strcpy(uartDataBuffer, p_str);      // 重新放回去
 		uartDataReady = 1;             // 设置发射位
+
 	} else if (strcmp(p_str, "help") == 0) {
-		print("[STM] Help\r\nsend <data> - Send data\r\nhelp - Show help\r\nopen - Open connection\r\n"
-		"stop - Stop connection\r\nconf <field> <data> - Set the config:\r\n\t\tchannel <INTEGER 40-90>\r\n");
-	} else if (strcmp(p_str, "conf") == 0) {
-		ptr = ptr2;
+		print("[STM] Help\r\n"
+		  "send <data> - Send data\r\n"
+		  "help - Show help\r\n"
+		  "open - Open connection\r\n"
+		  "stop - Stop connection\r\n"
+		  "conf <field> <data> - Set the config:\r\n"
+		  "     channel <INTEGER 40-90>\r\n"
+		  "\r\n"
+		  "KEY1: open\r\n"
+          "KEY0: stop\r\n");
+
+	} else if (strcmp(p_str, "config") == 0) {
+		ptr = ptr2 + 1;
 		ptr2 = parseNextWord(ptr, &len);
 		strncpy(p_str, ptr, len);
 		if (strcmp(p_str, "channel") == 0) {
 			// set channel
-			print("Set channel\r\n");
+			ptr = ptr2 + 1;
+			ptr2 = parseNextWord(ptr, &len);
+			strncpy(p_str, ptr, len);
+			if (len != 0) {
+				newChannel = 0;
+				for (int i = 0; i < len; ++i) {
+					newChannel *= 10;
+					newChannel += p_str[i] - '0';
+				}
+
+				if (status == STOP) {
+					channel = newChannel;
+					sprintf(txBuffer, "[STM] Set channel to %d\r\n", newChannel);
+					HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+				} else {
+					confMark = 1;
+				}
+			} else {
+				sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", p_str);
+				HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+			}
+		} else {
+			sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", p_str);
+			HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 		}
+
 	} else if (strcmp(p_str, "open") == 0) {
 		if (status == STOP) {
-			print("[STM] Open");
+			print("[STM] Open\r\n");
 			nxtStatus = WAIT;
 		} else {
-			print("[STM] Already open");
+			print("[STM] Already open\r\n");
 		}
+
 	} else if (strcmp(p_str, "stop") == 0) {
 		if (status != STOP) {
-			print("[STM] Stop");
+			print("[STM] Stop\r\n");
 			nxtStatus = STOP;
 		} else {
-			print("[STM] Already stop");
+			print("[STM] Already stop\r\n");
 		}
+
 	} else {
-		sprintf(txBuffer, "Unknown command '%s'. Input 'help' to see all commands.\r\n", p_str);
+		sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", uartDataBuffer);
 		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 	}
 	uartDataLen = 0;
@@ -285,26 +323,6 @@ int main(void) {
 	}
 	LCD_ShowString(X_PADDING, Y_PADDING, 200, 16, 16, "NRF24L01 OK");
 
-//	connect = DISCONNECT;
-//	ChangeConnection();
-
-//	while (1) {
-//		key = KEY_Scan(0);
-//		if (key == KEY0_PRES) {
-//			break;
-//		}
-//		t++;
-//		if (t == 100) {
-//			LCD_ShowString(10, 150, 230, 16, 16, "Presss KEY0 for default"); //闪烁显示提示信息
-//			LCD_ShowString(10, 166, 230, 16, 16, "or input channel"); //闪烁显示提示信息
-//		}
-//		if (t == 200) {
-//			LCD_Fill(10, 150, 230, 150 + 32, WHITE);
-//			t = 0;
-//		}
-//		delay_ms(5);
-//	}
-
 	status = STOP;
 	nxtStatus = STOP;
 
@@ -369,6 +387,11 @@ int main(void) {
 
 		switch (status) {
 			case WAIT:
+				// 最先check config
+				if (confMark != 0) {
+					nxtStatus = CONF;
+					break;
+				}
 				// 优先check心跳包
 				if(NRF24L01_RxPacket(rcvPackage) == 0) {
 					rcvPackage[NRF_BUFF_SIZE] = 0;
@@ -462,7 +485,10 @@ int main(void) {
 						sprintf(txBuffer, "[STM] Send finish: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
+//						strncpy(p_str2, uartDataBuffer, uartDataLen - 1);
+//						p_str2[uartDataLen - 1] = '\0';
 						AddLast(uartDataBuffer, SEND_TYPE);
+						RefreshWindow();
 
 						uartRestDataCnt = 0;
 						uartDataReady = 0;
@@ -501,6 +527,23 @@ int main(void) {
 				}
 				LED0 = 1;
 				nxtStatus = WAIT;       // 回到普通模式检测一下
+				break;
+
+			case CONF:
+				channel = newChannel;
+				confMark = 0;
+				sprintf(txBuffer, "[STM] Set channel to %d\r\n", newChannel);
+				HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+				connect = DISCONNECT;
+				ChangeConnection();
+
+				// 放弃剩下的
+				uartRestDataCnt = 0;
+				uartDataReady = 0;
+				uartDataLen = 0;
+
+				nxtStatus = WAIT;
 				break;
 		}
 
