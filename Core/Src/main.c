@@ -53,10 +53,11 @@
 #define DISCONNECT 0
 #define MAX_CNT 3
 
-#define WAIT (u8) 0
-#define SEND_HB (u8) 1
-#define SEND_DA (u8) 2
-#define CONF (u8) 3
+#define STOP (u8) 0
+#define WAIT (u8) 1
+#define SEND_HB (u8) 2
+#define SEND_DA (u8) 3
+#define CONF (u8) 4
 
 
 #define HEAD_LEN 2
@@ -165,6 +166,11 @@ void Processing_UART() {
 	p_str[len] = '\0';
 
 	if (strcmp(p_str, "send") == 0) {
+		if (status == STOP) {
+			print("[STM] Please open first.\r\n");
+			uartDataLen = 0;
+			return;
+		}
 		strcpy(p_str, ptr2 + 1);    // 拿到<data>，因为空格+1
 
 		// 切割一下包
@@ -178,7 +184,8 @@ void Processing_UART() {
 		strcpy(uartDataBuffer, p_str);      // 重新放回去
 		uartDataReady = 1;             // 设置发射位
 	} else if (strcmp(p_str, "help") == 0) {
-		print("[STM] Help\r\n");
+		print("[STM] Help\r\nsend <data> - Send data\r\nhelp - Show help\r\nopen - Open connection\r\n"
+		"stop - Stop connection\r\nconf <field> <data> - Set the config:\r\n\t\tchannel <INTEGER 40-90>\r\n");
 	} else if (strcmp(p_str, "conf") == 0) {
 		ptr = ptr2;
 		ptr2 = parseNextWord(ptr, &len);
@@ -186,6 +193,20 @@ void Processing_UART() {
 		if (strcmp(p_str, "channel") == 0) {
 			// set channel
 			print("Set channel\r\n");
+		}
+	} else if (strcmp(p_str, "open") == 0) {
+		if (status == STOP) {
+			print("[STM] Open");
+			nxtStatus = WAIT;
+		} else {
+			print("[STM] Already open");
+		}
+	} else if (strcmp(p_str, "stop") == 0) {
+		if (status != STOP) {
+			print("[STM] Stop");
+			nxtStatus = STOP;
+		} else {
+			print("[STM] Already stop");
 		}
 	} else {
 		sprintf(txBuffer, "Unknown command '%s'. Input 'help' to see all commands.\r\n", p_str);
@@ -216,12 +237,14 @@ void ChangeConnection() {
 	static u8 msg[64];
 	if (connect == CONNECT) {
 		print("[STM] Connected\r\n");
-		sprintf(msg, "Channel: %d   Connected", channel);
+		sprintf(msg, "Channel: %d   Connected   ", channel);
 	} else {
 		print("[STM] Disconnected\r\n");
 		sprintf(msg, "Channel: %d   Disconnected", channel);
 	}
-	LCD_ShowString(X_PADDING,Y_PADDING + 16,lcddev.width-1,32,16,msg);
+	BACK_COLOR = WHITE;
+	POINT_COLOR = BLACK;
+	LCD_ShowString(X_PADDING,Y_PADDING + 16,lcddev.width-1,32,16, msg);
 }
 
 u8 * getRcvPayload() {
@@ -235,6 +258,8 @@ u8 * getRcvPayload() {
   */
 int main(void) {
 
+	static u8 runMsg[32];
+
 	HAL_Init();                            //初始化HAL库
 	Stm32_Clock_Init(RCC_PLL_MUL9);    //设置时钟,72M
 	delay_init(72);                    //初始化延时函数
@@ -247,7 +272,7 @@ int main(void) {
 	NRF24L01_Init();                    //初始化NRF24L01
 
 	InitWindow();
-	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
+//	AddLast((uint8_t *) "Hello World!", RESP_TYPE);
 	RefreshWindow();
 
 	POINT_COLOR = BLACK;
@@ -260,6 +285,8 @@ int main(void) {
 	}
 	LCD_ShowString(X_PADDING, Y_PADDING, 200, 16, 16, "NRF24L01 OK");
 
+//	connect = DISCONNECT;
+//	ChangeConnection();
 
 //	while (1) {
 //		key = KEY_Scan(0);
@@ -278,14 +305,56 @@ int main(void) {
 //		delay_ms(5);
 //	}
 
-	status = WAIT;
-	nxtStatus = WAIT;
+	status = STOP;
+	nxtStatus = STOP;
 
+	print("[STM] Start! Input 'help' to see the command.\r\n");
 	while (1) {
+		if (nxtStatus == STOP) {
+			status = STOP;
+			LED0 = !LED0;
+
+			key = KEY_Scan(0);
+			if (key == KEY1_PRES) {
+				print("[STM] Open\r\n");
+				status = WAIT;
+				nxtStatus = WAIT;
+				t = 0;
+				continue;
+			}
+
+			if (t == 500 / DELAY_TIME) {
+				POINT_COLOR = BLACK;
+				BACK_COLOR = WHITE;
+				LCD_ShowString(X_PADDING, Y_PADDING + 16, 230, 16, 16, "Presss KEY1 to open"); //闪烁显示提示信息
+			}
+			if (t == 1000 / DELAY_TIME) {
+				LCD_Fill(X_PADDING, Y_PADDING + 16, 230, Y_PADDING + 32, WHITE);
+				t = 0;
+			}
+			++t;
+			delay_ms(DELAY_TIME);
+			continue;
+		}
+
+		key = KEY_Scan(0);
+		if (key == KEY0_PRES) {
+			print("[STM] Stop\r\n");
+			nxtStatus = STOP;
+
+			POINT_COLOR = BLACK;
+			BACK_COLOR = WHITE;
+			sprintf(runMsg, "Stop");
+			LCD_Fill(X_PADDING + 110, Y_PADDING, lcddev.width-1,Y_PADDING + 16, WHITE);
+			LCD_Fill(X_PADDING, Y_PADDING + 16, lcddev.width-1,Y_PADDING + 16, WHITE);
+			LCD_ShowString(X_PADDING + 110, Y_PADDING,lcddev.width-1,32, 16, runMsg);
+			continue;
+		}
+
 		if (status == WAIT && (nxtStatus == SEND_DA || nxtStatus == SEND_HB)) {
-			NRF24L01_TX_Mode();
-		} else if ((status == SEND_DA || status == SEND_HB) && nxtStatus == WAIT) {
-			NRF24L01_RX_Mode();
+			NRF24L01_TX_Mode_P(channel);
+		} else if (status != WAIT && nxtStatus == WAIT) {
+			NRF24L01_RX_Mode_P(channel);
 		}
 		status = nxtStatus;
 
@@ -380,9 +449,13 @@ int main(void) {
 					if (isLast == LAST) {
 						sprintf(txBuffer, "[STM] Send finish: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
+						AddLast(uartDataBuffer, SEND_TYPE);
+
 						uartRestDataCnt = 0;
 						uartDataReady = 0;
 						uartDataLen = 0;
+
 					} else {
 						sprintf(txBuffer, "[STM] Send partly: %s\r\n", sndPackage + HEAD_LEN);
 						HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
@@ -417,6 +490,26 @@ int main(void) {
 				nxtStatus = WAIT;       // 回到普通模式检测一下
 				break;
 		}
+
+		if (t % 50 == 0) {
+			static int cnt = 0;
+			BACK_COLOR = WHITE;
+			POINT_COLOR = BLACK;
+			if (cnt == 0) {
+				sprintf(runMsg, "Runing");
+			} else if (cnt == 1) {
+				sprintf(runMsg, "Runing.");
+			} else if (cnt == 2) {
+				sprintf(runMsg, "Runing..");
+			} else {
+				sprintf(runMsg, "Runing...");
+				cnt = -1;
+			}
+			++ cnt;
+			LCD_Fill(X_PADDING + 110, Y_PADDING, lcddev.width-1,Y_PADDING + 16, WHITE);
+			LCD_ShowString(X_PADDING + 110, Y_PADDING,lcddev.width-1,32, 16, runMsg);
+		}
+
 		++t;
 		delay_ms(DELAY_TIME);
 	}
