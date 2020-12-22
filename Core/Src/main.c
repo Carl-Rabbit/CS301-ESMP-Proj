@@ -149,6 +149,22 @@ u8 * parseNextWord(u8 * str, int * lenPtr) {
 	}
 }
 
+
+void ChangeConnection() {
+	static u8 msg[64];
+	if (connect == CONNECT) {
+		print("[STM] Connected\r\n");
+		sprintf(msg, "Channel: %d   Connected   ", channel);
+	} else {
+		print("[STM] Disconnected\r\n");
+		sprintf(msg, "Channel: %d   Disconnected", channel);
+	}
+	BACK_COLOR = WHITE;
+	POINT_COLOR = BLACK;
+	LCD_ShowString(X_PADDING,Y_PADDING + 16,lcddev.width-1,32,16, msg);
+}
+
+
 /* 当串口输入完成后调用，uartDataBuffer是输入的数据（长度uartDataLen) */
 void Processing_UART() {
 	if (uartDataLen <= 1) {
@@ -234,6 +250,9 @@ void Processing_UART() {
 		if (status == STOP) {
 			print("[STM] Open\r\n");
 			nxtStatus = WAIT;
+			LED1 = 0;
+			connect = DISCONNECT;
+			ChangeConnection();
 		} else {
 			print("[STM] Already open\r\n");
 		}
@@ -242,6 +261,8 @@ void Processing_UART() {
 		if (status != STOP) {
 			print("[STM] Stop\r\n");
 			nxtStatus = STOP;
+			LED1 = 1;
+			LCD_ShowString(X_PADDING + 110, Y_PADDING,lcddev.width-1,32, 16, "Stop       ");
 		} else {
 			print("[STM] Already stop\r\n");
 		}
@@ -269,20 +290,6 @@ void SetSndPackage(u8 type, u8 isLast, const u8 * content, u8 length) {
 	}
 	sndPackage[i] = '\0';
 	sndPackage[NRF_BUFF_SIZE] = 0;
-}
-
-void ChangeConnection() {
-	static u8 msg[64];
-	if (connect == CONNECT) {
-		print("[STM] Connected\r\n");
-		sprintf(msg, "Channel: %d   Connected   ", channel);
-	} else {
-		print("[STM] Disconnected\r\n");
-		sprintf(msg, "Channel: %d   Disconnected", channel);
-	}
-	BACK_COLOR = WHITE;
-	POINT_COLOR = BLACK;
-	LCD_ShowString(X_PADDING,Y_PADDING + 16,lcddev.width-1,32,16, msg);
 }
 
 u8 * getRcvPayload() {
@@ -536,6 +543,7 @@ int main(void) {
 				HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 
 				connect = DISCONNECT;
+				HBTime = HB_TRY_TIME;
 				ChangeConnection();
 
 				// 放弃剩下的
