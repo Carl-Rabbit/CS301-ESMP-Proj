@@ -202,6 +202,10 @@ void Processing_UART() {
 		strcpy(uartDataBuffer, p_str);      // 重新放回去
 		uartDataReady = 1;             // 设置发射位
 
+		for (int i = 0; i < TX_BUF_SIZE; ++i) {
+			p_str[i] = '\0';
+		}
+
 	} else if (strcmp(p_str, "help") == 0) {
 		print("[STM] Help\r\n"
 		  "send <data> - Send data\r\n"
@@ -218,6 +222,17 @@ void Processing_UART() {
 		ptr = ptr2 + 1;
 		ptr2 = parseNextWord(ptr, &len);
 		strncpy(p_str, ptr, len);
+
+		// debug
+//		print(ptr);
+//		print("\r\n");
+//		print(ptr2);
+//		print("\r\n");
+//		print(p_str);
+//		print("\r\n");
+//		sprintf(txBuffer, "[STM] len = %d\r\n", strlen(p_str));
+//		HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
+
 		if (strcmp(p_str, "channel") == 0) {
 			// set channel
 			ptr = ptr2 + 1;
@@ -238,11 +253,11 @@ void Processing_UART() {
 					confMark = 1;
 				}
 			} else {
-				sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", p_str);
+				sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", uartDataBuffer);
 				HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 			}
 		} else {
-			sprintf(txBuffer, "[STM] Incorrect command '%s'. Input 'help' to see all commands.\r\n", p_str);
+			sprintf(txBuffer, "[STM] 2Incorrect command '%s'. Input 'help' to see all commands.\r\n", uartDataBuffer);
 			HAL_UART_Transmit(&huart1, txBuffer, strlen(txBuffer), 0xffff);
 		}
 
@@ -405,7 +420,9 @@ int main(void) {
 					LED0 = 0;
 					switch (rcvPackage[0]) {
 						case HEART_BEAT:
-//							print("Recv HB package\r\n");
+//							print("[DEBUG] Recv HB package\r\n[DEBUG]");
+//							print(getRcvPayload());
+//							print("\r\n");
 							break;
 						case PAYLOAD:
 							if (rcvPackage[1] == LAST) {
@@ -431,6 +448,8 @@ int main(void) {
 							break;
 						default:
 							print("[STM] Unkonwn pacakge\r\n");
+							print(rcvDataBuffer);
+							print("\r\n");
 					}
 					LED0 = 1;
 				}
